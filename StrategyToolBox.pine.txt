@@ -1,0 +1,991 @@
+//@version=4
+strategy("Strategy Toolbox", overlay=true, calc_on_every_tick=true)
+//######################## Select Strategy #########################
+strategy_type = input(defval = "TREND", title = "Strategy Type", options=["TREND","MA"])
+//######################## 01-Trend Strategy Input #################
+dummy1 = input(true, title = "========== 01-Trend Strategy Options ========")
+
+tr_type = input(defval ="MOST", title="Trend Indicator", options=["MOST","OTT","SUPERTREND","PMAX"])
+ma_type = input(defval ="VMA",  title = "Most & OTT MA Type", options=["T3","EMA","SMA","DEMA","TEMA","WMA","VWMA","SMMA","HMA","KIJUNSEN","VIDYA","VMA","ZLEMA"])
+ma_len = input(defval=5,        title="Trend Length & Period", minval=2)
+ma_percent = input(defval=3,    title="Trend Percent & Multiplier",type=input.float, minval=0.1, step=0.1)
+ma_src = input(close,           title="Trend Source")
+
+t3_factor = input(defval=0.47, step=0.1, title="T3 Factor", minval=0.01)
+pmax_atr =input(10, "Pmax Atr Period", minval=1)
+
+show_trend = input(defval = true, title="Show Trend Signals?", type=input.bool)
+show_tr_cross_signal = input(defval = true, title="Show Trend Crossing Signals?", type=input.bool)
+//######################## 02-MA Cross Strategy Input ##############
+dummy2 = input(true, title = "========== 02-MA Cross Strategy Options =====")
+
+// First MA Input
+mo_type1 = input(defval = "EMA", title = "First MA Type", options=["T3","EMA","SMA","DEMA","TEMA","WMA","VWMA","SMMA","HMA","KIJUNSEN","TENKANSEN","VIDYA","VMA","ZLEMA"])
+mo_len1 = input(defval=9, minval=2, title="First MA Length")
+
+// Second MA Input
+mo_type2 = input(defval = "EMA", title = "Second MA Type", options=["T3","EMA","SMA","DEMA","TEMA","WMA","VWMA","SMMA","HMA","KIJUN","TENKANSEN","VIDYA","VMA","ZLEMA"])
+mo_len2 = input(defval=21, minval=2, title="Second MA Length")
+
+mo_src = input(close, title="MA Source")
+mo_t3_factor = input(defval=0.47, step=0.1, title="T3 Factor", minval=0.01)
+
+show_mo = input(defval=true, title="Show MA Signals?", type=input.bool)
+show_mo_cross_signal = input(defval=true, title="Show MA Crossing Signals?", type=input.bool)
+//######################## All MA Function #########################
+
+//######################## T3 Function #############################
+//t3_factor = strategy_type=='TREND'?tr_t3_factor:strategy_type=='MA'?mo_t3_factor:na
+//Tillson T3 Moving Average
+T3_Func(ma_src,ma_len,t3_factor) =>
+    var_t3e1=ema(ma_src, ma_len)
+    var_t3e2=ema(var_t3e1, ma_len)
+    var_t3e3=ema(var_t3e2, ma_len)
+    var_t3e4=ema(var_t3e3, ma_len)
+    var_t3e5=ema(var_t3e4, ma_len)
+    var_t3e6=ema(var_t3e5, ma_len)
+    var_c1=-t3_factor*t3_factor*t3_factor
+    var_c2=3*t3_factor*t3_factor+3*t3_factor*t3_factor*t3_factor
+    var_c3=-6*t3_factor*t3_factor-3*t3_factor-3*t3_factor*t3_factor*t3_factor
+    var_c4=1+3*t3_factor+t3_factor*t3_factor*t3_factor+3*t3_factor*t3_factor
+    var_c1 * var_t3e6 + var_c2 * var_t3e5 + var_c3 * var_t3e4 + var_c4 * var_t3e3
+    
+//######################## Ema Function ############################
+//Exponential Moving Average
+Ema_Func(ma_src,ma_len) =>
+    var_ema = 0.0
+    var_ema := ema(ma_src,ma_len)
+
+//######################## Sma Function ############################
+//Simple Moving Average
+Sma_Func(ma_src,ma_len) =>
+    var_sma = 0.0
+    var_sma := sma(ma_src, ma_len)
+
+//######################## Dema Function ###########################
+//Double Exponential Moving Average
+Dema_Func(ma_src,ma_len) =>
+    var_e1 = ema(ma_src,ma_len)
+    var_e2 = ema(var_e1,ma_len)
+    var_dema = 2 * var_e1 - var_e2
+
+//######################## Tema Function ###########################
+//Triple Exponential Moving Average
+Tema_Func(ma_src,ma_len) =>
+    var_ema1 = ema(ma_src,ma_len)
+    var_ema2 = ema(var_ema1,ma_len)
+    var_ema3 = ema(var_ema2,ma_len)
+    var_tema = 3 * (var_ema1 - var_ema2) + var_ema3
+
+//######################## Wma Function ############################
+//Weighted Moving Average
+Wma_Func(ma_src,ma_len) =>
+    var_wma = 0.0
+    var_wma := wma(ma_src,ma_len)
+
+//######################## Vwma Function ###########################
+//Volume Weighted Moving Average
+Vwma_Func(ma_src,ma_len) =>
+    var_vwma = 0.0
+    var_vwma := vwma(ma_src,ma_len)
+
+//######################## Smma Function ###########################
+//Smoothed Moving Average
+Smma_Func(ma_src,ma_len) =>
+    var_smma = 0.0
+    var_smma := na(var_smma[1]) ? sma(ma_src,ma_len) : (var_smma[1] * (ma_len - 1) + ma_src) / ma_len
+
+//######################## Hma Function ############################
+//Hull Moving Average
+Hma_Func(ma_src,ma_len) =>
+    var_Hma = wma(2*wma(ma_src,ma_len/2)-wma(ma_src, ma_len), round(sqrt(ma_len)))
+
+//######################## Vidya Function ##########################
+//Variable Index Dynamic Average
+Vidya_Func(ma_src,ma_len)=>
+    alpha = 2/(ma_len+1)
+    momm = change(ma_src)
+    m1 = momm >= 0.0 ? momm : 0.0
+    m2 = momm >= 0.0 ? 0.0 : -momm
+    sm1 = sum(m1, 9)
+    sm2 = sum(m2, 9)
+    chandeMO = nz(100*(sm1-sm2)/(sm1+sm2))
+    k= abs(chandeMO)/100
+    VIDYA=0.0
+    VIDYA:= nz(alpha*k*ma_src)+(1-alpha*k)*nz(VIDYA[1])
+
+//######################## Vma Function ############################
+//Variable Moving Average
+Vma_Func(ma_src,ma_len) =>
+    alpha=2/(ma_len+1)
+    ud1=ma_src>ma_src[1] ? ma_src-ma_src[1] : 0
+    dd1=ma_src<ma_src[1] ? ma_src[1]-ma_src : 0
+    UD=sum(ud1,9)
+    DD=sum(dd1,9)
+    CMO=nz((UD-DD)/(UD+DD))
+    k= abs(CMO)
+    Var=0.0
+    Var:=nz(alpha*k*ma_src)+(1-alpha*k)*nz(Var[1])
+
+//######################## Zema Function ###########################
+//Zero Lag Ema
+Zlema_Func(ma_src,ma_len) =>
+    var_lag = floor((ma_len - 1)/2)
+    ema(ma_src + ma_src - ma_src[var_lag],ma_len)
+
+//######################## Ichimoku Function #######################
+
+//######################## Kijunsen Function #######################
+//Kijunsen Moving Average
+Kijunsen_Func(ma_len)=>
+    avg(lowest(ma_len), highest(ma_len))
+
+//######################## Tenkansen Function ######################
+//Tenkansen Moving Average
+Tenkansen_Func(ma_len)=>
+    avg(lowest(ma_len), highest(ma_len))
+
+//######################## Spana Function ##########################
+//Spana Moving Average
+Spana_Func(ma_len1,ma_len2)=>
+    avg(ma_len1,ma_len2)
+
+//######################## Spanb Function ##########################
+//Spana Moving Average
+Spanb_Func(ma_len)=>
+    avg(lowest(ma_len), highest(ma_len))
+    
+//######################## MA Function #############################
+Ma_Func(ma_src,ma_len,ma_type,t3_factor)=>
+    
+    float baseline_return = 0.0
+
+    if(ma_type=="T3")
+        baseline_return :=T3_Func(ma_src, ma_len, t3_factor)
+    
+    if(ma_type=="EMA")
+        baseline_return :=Ema_Func(ma_src, ma_len)
+        
+    if(ma_type=="SMA")
+        baseline_return :=Sma_Func(ma_src, ma_len)
+        
+    if(ma_type=="DEMA")
+        baseline_return :=Dema_Func(ma_src, ma_len)
+    
+    if(ma_type=="TEMA")
+        baseline_return :=Tema_Func(ma_src, ma_len)
+    
+    if(ma_type=="WMA")
+        baseline_return :=Wma_Func(ma_src, ma_len)
+        
+    if(ma_type=="VWMA")
+        baseline_return :=Vwma_Func(ma_src, ma_len)
+        
+    if(ma_type=="SMMA")
+        baseline_return :=Smma_Func(ma_src, ma_len)
+        
+    if(ma_type=="HMA")
+        baseline_return :=Hma_Func(ma_src, ma_len)
+        
+    if(ma_type=="VIDYA")
+        baseline_return :=Vidya_Func(ma_src, ma_len)
+        
+    if(ma_type=="VMA")
+        baseline_return :=Vma_Func(ma_src, ma_len)
+        
+    if(ma_type=="ZLEMA")
+        baseline_return :=Zlema_Func(ma_src, ma_len)
+        
+    if(ma_type=="KIJUNSEN")
+        baseline_return :=Kijunsen_Func(ma_len)
+    
+    if(ma_type=="TENKANSEN")
+        baseline_return :=Tenkansen_Func(ma_len)
+        
+    baseline_return
+   
+//######################## Trend Strategy ##########################
+//######################## Most Function ###########################
+most_averprice = Ma_Func(ma_src,ma_len,ma_type,t3_factor)
+
+Most_Func(ma_src,ma_len,ma_percent,ma_type)=>
+    exMov= Ma_Func(ma_src,ma_len,ma_type,t3_factor)
+    fark=exMov*ma_percent*0.01 
+    newshortband= exMov + fark
+    newlongband= exMov - fark 
+    longband =0.0
+    shortband=0.0
+    longband:= exMov[1] > longband[1] and exMov > longband[1]? max(longband[1],newlongband):newlongband 
+    shortband:=exMov[1] < shortband[1] and exMov < shortband[1]? min(shortband[1], newshortband):newshortband 
+    trend=0
+    trend:=cross(exMov,shortband[1])?1:cross(longband[1], exMov)?-1:nz(trend[1],1)
+    most = trend==1? longband: shortband
+    
+most_trendprice=Most_Func(ma_src,ma_len,ma_percent,ma_type)
+
+most_buy =crossover(most_averprice,most_trendprice)
+most_sell=crossunder(most_averprice,most_trendprice)
+//######################## OTT Function ############################
+ott_averprice= Ma_Func(ma_src,ma_len,ma_type,t3_factor)
+
+Ott_Func(ma_src,ma_len,ma_percent,ma_type)=>
+    var_ott= Ma_Func(ma_src,ma_len,ma_type,t3_factor)
+    fark=var_ott*ma_percent*0.01
+    longStop = var_ott - fark
+    longStopPrev = nz(longStop[1], longStop)
+    longStop := var_ott > longStopPrev ? max(longStop, longStopPrev) : longStop
+    shortStop =  var_ott + fark
+    shortStopPrev = nz(shortStop[1], shortStop)
+    shortStop := var_ott < shortStopPrev ? min(shortStop, shortStopPrev) : shortStop
+    dir = 1
+    dir := nz(dir[1], dir)
+    dir := dir == -1 and var_ott > shortStopPrev ? 1 : dir == 1 and var_ott < longStopPrev ? -1 : dir
+    mt = dir==1 ? longStop: shortStop
+    ott=var_ott>mt ? mt*(200+ma_percent)/200 : mt*(200-ma_percent)/200 
+
+ott_trendprice=Ott_Func(ma_src,ma_len,ma_percent,ma_type)
+
+ott_buy =crossover(ott_averprice,ott_trendprice[2])
+ott_sell=crossunder(ott_averprice,ott_trendprice[2])
+//######################## Supertrend Function ####################
+[Supertrend, Trend] = supertrend(ma_percent,ma_len)
+
+sup_averprice=Trend==-1?Supertrend:na
+sup_trendprice=Trend==1?Supertrend:na
+
+sup_buy =Trend[1]==1 and Trend==-1
+sup_sell=Trend[1]==-1 and Trend==1
+//######################## Pmax Function ###########################
+pmax_averprice = Ma_Func(ma_src,ma_len,ma_type,t3_factor)
+
+Pmax_Func(ma_src,ma_len,ma_percent)=>
+    atr= atr(pmax_atr)
+    MAvg=Ma_Func(ma_src,ma_len,ma_type,t3_factor)
+    longStop = MAvg - ma_percent*atr
+    longStopPrev = nz(longStop[1], longStop)
+    longStop := MAvg > longStopPrev ? max(longStop, longStopPrev) : longStop
+    shortStop = MAvg + ma_percent*atr
+    shortStopPrev = nz(shortStop[1], shortStop)
+    shortStop := MAvg < shortStopPrev ? min(shortStop, shortStopPrev) : shortStop
+    dir = 1
+    dir := nz(dir[1], dir)
+    dir := dir == -1 and MAvg > shortStopPrev ? 1 : dir == 1 and MAvg < longStopPrev ? -1 : dir
+    PMax = dir==1 ? longStop: shortStop
+
+pmax_trendprice=Pmax_Func(ma_src,ma_len,ma_percent)
+
+pmax_buy =crossover(pmax_averprice,pmax_trendprice)
+pmax_sell=crossunder(pmax_averprice,pmax_trendprice)
+//######################## Trend Conditions ########################
+tr_averprice = tr_type=='MOST'?most_averprice:tr_type=='OTT'?ott_averprice:tr_type=='SUPERTREND'?sup_averprice:tr_type=='PMAX'?pmax_averprice:na
+tr_price = tr_type=='MOST'?most_trendprice:tr_type=='OTT'?nz(ott_trendprice[2]):tr_type=='SUPERTREND'?sup_trendprice:tr_type=='PMAX'?pmax_trendprice:na
+
+tr_buy = tr_type=='MOST'?most_buy:tr_type=='OTT'?ott_buy:tr_type=='SUPERTREND'?sup_buy:tr_type=='PMAX'?pmax_buy:na
+tr_sell= tr_type=='MOST'?most_sell:tr_type=='OTT'?ott_sell:tr_type=='SUPERTREND'?sup_sell:tr_type=='PMAX'?pmax_sell:na
+
+//Show Trend Indicator & Support Line
+plot(strategy_type=='TREND' and show_trend? tr_averprice:na, title="Support Line", style=plot.style_linebr, linewidth=2, color=color.green)
+plot(strategy_type=='TREND' and show_trend? tr_price:na, title="Trend Line", style=plot.style_linebr, linewidth=2, color=color.red)
+
+//Label Trend Indicator & Support Line
+plotshape(strategy_type=='TREND' and show_tr_cross_signal and tr_buy? tr_averprice : na, title="Trend BUY", text="BUY", location=location.absolute, style=shape.labelup, size=size.tiny, color=#0F18BF, textcolor=color.white, transp=0)
+plotshape(strategy_type=='TREND' and show_tr_cross_signal and tr_sell? tr_price : na, title="Trend SELL", text="SELL", location=location.absolute, style=shape.labeldown, size=size.tiny, color=#0F18BF, textcolor=color.white, transp=0)
+//######################## MA Conditions ###########################
+first_mo = Ma_Func(mo_src,mo_len1,mo_type1,mo_t3_factor)
+second_mo = Ma_Func(mo_src,mo_len2,mo_type2,mo_t3_factor)
+
+mo_buy=crossover(first_mo,second_mo)
+mo_sell=crossunder(first_mo,second_mo)
+
+//Show First & Second MA
+plot(strategy_type=='MA' and show_mo? first_mo:na, title="First MA Line", style=plot.style_linebr, linewidth=2, color=color.green)
+plot(strategy_type=='MA' and show_mo? second_mo:na, title="Second MA Line", style=plot.style_linebr, linewidth=2, color=color.red)
+
+//Label Firt MA & Second MA
+plotshape(strategy_type=='MA' and show_mo_cross_signal and mo_buy? first_mo : na, title="MA BUY", text="BUY", location=location.absolute, style=shape.labelup, size=size.tiny, color=#0F18BF, textcolor=color.white, transp=0)
+plotshape(strategy_type=='MA' and show_mo_cross_signal and mo_sell? second_mo : na, title="MA SELL", text="SELL", location=location.absolute, style=shape.labeldown, size=size.tiny, color=#0F18BF, textcolor=color.white, transp=0)
+//######################## Stock Screener Input ####################
+dummy3 = input(true, title = "========== Stock Screener Options ===========")
+
+st_sc = input(title="Enable Stock Screener?", type=input.bool, defval=false)
+look_for = input(defval = "TREND/MA", title = "Stock Screener Condition?", options=["TREND/MA"])
+last_bar_back = input(defval=0, step=1, title="Last Bar Back", minval=0)
+//################ Support & Resistance and Fibonacci Input #######
+dummy7 = input(true, title = "====Support & Resistance, Fibonacci and Other Options===")
+
+fibo_len = input(150, minval=1, title="Fibonacci Length")
+show_fibo = input(false, title="Show Fibonacci Levels")
+reverse_mode = input(true, title="Enable Reverse Mode")
+
+pivot_len = input(14, minval=1, title="Pivot High Low Length")
+show_pivot_levels = input(false, title="Show Pivot High Low Level")
+show_sr_levels = input(false, title="Show S/R Level")
+
+lrg_len = input(150, minval=1, title="Linear Regression Length")
+lrg_dev = input(2.0,minval=1, title="Linear Regression Deviation")
+show_lin = input(title="Show Linear Regression", type=input.bool, defval=false)
+top_bars = input(150, minval=1, title='Trend Breakout Top Bars')
+low_bars = input(30, minval=1, title='Trend Breakout Bottom Bars')
+show_tb = input(defval = false, title="Show Trend Line?", type=input.bool)
+
+show_pil = input(defval = false, title="Show Positive Indicator List?", type=input.bool)
+show_nil = input(defval = false, title="Show Negative Indicator List?", type=input.bool)
+//######################## All Search ##############################
+highest_index = -highestbars(high, top_bars)
+lowest_index = -lowestbars(low, low_bars)
+
+hx1 = valuewhen(highest_index, bar_index[highest_index], 0)
+hy1 = valuewhen(highest_index, high[highest_index], 0)
+hx2 = valuewhen(highest_index, bar_index[1], 0)
+hy2 = valuewhen(highest_index, high[1], 0)
+
+lx1 = valuewhen(lowest_index, bar_index[lowest_index], 0)
+ly1 = valuewhen(lowest_index, low[lowest_index], 0)
+lx2 = valuewhen(lowest_index, bar_index[1], 0)
+ly2 = valuewhen(lowest_index, low[1], 0)
+
+// trendline
+get_slope(x1,x2,y1,y2)=>
+    m = (y2-y1)/(x2-x1)
+ 
+get_y_intercept(m, x1, y1)=>
+    b=y1-m*x1
+
+get_y(m, b, ts)=>
+    Y = m * ts + b
+
+res_m = get_slope(hx1,hx2,hy1,hy2)
+res_b = get_y_intercept(res_m, hx1, hy1)
+res_y = get_y(res_m, res_b, bar_index[1])
+
+sup_m = get_slope(lx1,lx2,ly1,ly2)
+sup_b = get_y_intercept(sup_m, lx1, ly1)
+sup_y = get_y(sup_m, sup_b, bar_index[1])
+
+if show_tb and barstate.islast
+    line.new(hx1,hy1,hx2,hy2, style=line.style_dashed, color=color.green,extend=extend.right)
+if show_tb and barstate.islast
+    line.new(lx1,ly1,lx2,ly2, style=line.style_dashed, color=color.red,extend=extend.right)
+
+tb_buy = crossover(close, res_y)
+tb_sell = crossunder(close, sup_y)
+
+plotshape(show_tb and barstate.islast? tb_buy:na,  style=shape.triangleup, color=color.green, size=size.tiny, location=location.belowbar, title='Long Break')
+plotshape(show_tb and barstate.islast? tb_sell:na, style=shape.triangledown, color=color.red, size=size.tiny, location=location.abovebar, title='Short Break')
+//######################## Fibonacci Input ########################
+highestHigh = highest(high, fibo_len)
+lowestLow = lowest(low, fibo_len)
+
+var float fibo_0 = na
+var float fibo_236 = na
+var float fibo_382 = na
+var float fibo_50 = na
+var float fibo_618 = na
+var float fibo_786 = na
+var float fibo_100 = na
+
+var line[] fibo_lines = array.new_line(7)
+var label[] fibo_labels = array.new_label(7)
+
+if (reverse_mode)
+    fibo_100 := lowestLow
+    fibo_786 := lowestLow + (highestHigh - lowestLow) * 0.236
+    fibo_618 := lowestLow + (highestHigh - lowestLow) * 0.382
+    fibo_50 := lowestLow + (highestHigh - lowestLow) * 0.5
+    fibo_382 := lowestLow + (highestHigh - lowestLow) * 0.618
+    fibo_236 := lowestLow + (highestHigh - lowestLow) * 0.786
+    fibo_0 := highestHigh
+else
+    fibo_0 := lowestLow
+    fibo_236 := lowestLow + (highestHigh - lowestLow) * 0.236
+    fibo_382 := lowestLow + (highestHigh - lowestLow) * 0.382
+    fibo_50 := lowestLow + (highestHigh - lowestLow) * 0.5
+    fibo_618 := lowestLow + (highestHigh - lowestLow) * 0.618
+    fibo_786 := lowestLow + (highestHigh - lowestLow) * 0.786
+    fibo_100 := highestHigh
+
+if (show_fibo)
+    for i = 0 to array.size(fibo_lines) - 1
+        line.delete(array.get(fibo_lines, i))
+        label.delete(array.get(fibo_labels, i))
+
+    array.set(fibo_lines, 0, line.new(bar_index[fibo_len], fibo_0, bar_index[0], fibo_0, color=color.red, width=1))
+    array.set(fibo_lines, 1, line.new(bar_index[fibo_len], fibo_236, bar_index[0], fibo_236, color=color.orange, width=1))
+    array.set(fibo_lines, 2, line.new(bar_index[fibo_len], fibo_382, bar_index[0], fibo_382, color=color.yellow, width=1))
+    array.set(fibo_lines, 3, line.new(bar_index[fibo_len], fibo_50, bar_index[0], fibo_50, color=color.green, width=1))
+    array.set(fibo_lines, 4, line.new(bar_index[fibo_len], fibo_618, bar_index[0], fibo_618, color=color.blue, width=1))
+    array.set(fibo_lines, 5, line.new(bar_index[fibo_len], fibo_786, bar_index[0], fibo_786, color=color.purple, width=1))
+    array.set(fibo_lines, 6, line.new(bar_index[fibo_len], fibo_100, bar_index[0], fibo_100, color=color.red, width=1))
+
+    array.set(fibo_labels, 0, label.new(bar_index[0], fibo_0, "0% - " + tostring(fibo_0), color=color.red, textcolor=color.white, style=label.style_label_left))
+    array.set(fibo_labels, 1, label.new(bar_index[0], fibo_236, "23.6% - " + tostring(fibo_236), color=color.orange, textcolor=color.white, style=label.style_label_left))
+    array.set(fibo_labels, 2, label.new(bar_index[0], fibo_382, "38.2% - " + tostring(fibo_382), color=color.yellow, textcolor=color.white, style=label.style_label_left))
+    array.set(fibo_labels, 3, label.new(bar_index[0], fibo_50, "50% - " + tostring(fibo_50), color=color.green, textcolor=color.white, style=label.style_label_left))
+    array.set(fibo_labels, 4, label.new(bar_index[0], fibo_618, "61.8% - " + tostring(fibo_618), color=color.blue, textcolor=color.white, style=label.style_label_left))
+    array.set(fibo_labels, 5, label.new(bar_index[0], fibo_786, "78.6% - " + tostring(fibo_786), color=color.purple, textcolor=color.white, style=label.style_label_left))
+    array.set(fibo_labels, 6, label.new(bar_index[0], fibo_100, "100% - " + tostring(fibo_100), color=color.red, textcolor=color.white, style=label.style_label_left))
+//######################## Strategy Input ##########################
+dummy5 = input(true, title = "========== Strategy Tester Options ==========")
+show_strategy = input(title="Enable Strategy Tester?", type=input.bool, defval=false)
+show_strategy_parameters = input(title="Show Strategy Parameters?", type=input.bool, defval=false)
+show_performance_output = input(title="Show Performance Output?", type=input.bool, defval=false)
+//######################## StdDev Function##########################
+std_deviation=input(title="Standard Deviation Period", type=input.integer, minval=1, defval=14)
+std_deviation_value=input(defval=0, minval=0, step=0.01, title="Standard Deviation Value")
+
+StdDev_Func(ma_src,std_deviation) =>
+    stdev(ma_src,std_deviation)
+//######################## Long & Short Signal #####################
+buy = strategy_type=='TREND'? tr_buy:strategy_type=='MA'? mo_buy:na
+sell = strategy_type=='TREND'? tr_sell:strategy_type=='MA'? mo_sell:na
+
+long  = buy and StdDev_Func(ma_src,std_deviation)>std_deviation_value
+short = sell and StdDev_Func(ma_src,std_deviation)>std_deviation_value
+//######################## Backtest ################################
+dummy6 = input(true, title = "========== Backtest Input Options ===========")
+FromDay    = input(defval = 1, title = "From Day", minval = 1, maxval = 31)
+FromMonth  = input(defval = 1, title = "From Month", minval = 1, maxval = 12)
+FromYear   = input(defval = 2005, title = "From Year", minval = 2005)
+ToDay      = input(defval = 1, title = "To Day", minval = 1, maxval = 31)
+ToMonth    = input(defval = 1, title = "To Month", minval = 1, maxval = 12)
+ToYear     = input(defval = 9999, title = "To Year", minval = 2006)
+Start     = timestamp(FromYear, FromMonth, FromDay, 00, 00)
+Finish    = timestamp(ToYear, ToMonth, ToDay, 23, 59)
+
+Timerange() =>
+    time >= Start and time <= Finish ? true : false
+//######################## All Strategy ############################
+look_for_condition=look_for=="TREND/MA"?tr_buy:na
+strategy_cond= barssince(look_for_condition)<=last_bar_back
+condition=strategy_cond
+//######################## Strategy ################################
+if (show_strategy or show_performance_output) and long
+    strategy.entry("Long", strategy.long,when=Timerange())
+if (show_strategy or show_performance_output) and short
+    strategy.entry("Short", strategy.short,when=Timerange())
+//################ Support & Resistance Input #####################
+// Get High and Low Pivot Points
+pivot_high = pivothigh(high, pivot_len, pivot_len)
+pivot_low = pivotlow(low, pivot_len, pivot_len)
+
+// HH
+hh_value_when1 = valuewhen(pivot_high, high[pivot_len], 1)
+hh_value_when2 = valuewhen(pivot_high, high[pivot_len], 0)
+higher_high = na(pivot_high) ? na : hh_value_when1 < hh_value_when2 ? pivot_high : na
+plotshape(show_pivot_levels? higher_high :na, title='HH', style=shape.labeldown, location=location.abovebar, color=color.green, text="HH", textcolor=color.white, offset=-pivot_len)
+
+// LH
+lh_value_when1 = valuewhen(pivot_high, high[pivot_len], 1)
+lh_value_when2 = valuewhen(pivot_high, high[pivot_len], 0)
+lower_high = na(pivot_high) ? na : lh_value_when1 > lh_value_when2 ? pivot_high : na
+plotshape(show_pivot_levels? lower_high : na, title='LH', style=shape.labeldown, location=location.abovebar, color=color.red, text="LH", textcolor=color.white, offset=-pivot_len, size=size.tiny)
+
+// HL
+hl_value_when1 = valuewhen(pivot_low, low[pivot_len], 1)
+hl_value_when2 = valuewhen(pivot_low, low[pivot_len], 0)
+higher_low = na(pivot_low) ? na : hl_value_when1 < hl_value_when2 ? pivot_low : na
+plotshape(show_pivot_levels? higher_low : na, title='HL', style=shape.labelup, location=location.belowbar, color=color.green, text="HL", textcolor=color.white, offset=-pivot_len)
+
+// LL
+ll_value_when1 = valuewhen(pivot_low, low[pivot_len], 1)
+ll_value_when2 = valuewhen(pivot_low, low[pivot_len], 0)
+lower_low = na(pivot_low) ? na : ll_value_when1 > ll_value_when2 ? pivot_low : na
+plotshape(show_pivot_levels? lower_low : na, title='LL', style=shape.labelup, location=location.belowbar, color=color.red, text="LL", textcolor=color.white, offset=-pivot_len)
+
+// Count How many candles for current Pivot Level, If new reset.
+count_high = 0
+count_low = 0
+count_high := na(pivot_high) ? nz(count_high[1]) + 1 : 0
+count_low := na(pivot_low) ? nz(count_low[1]) + 1 : 0
+
+pivot_highs = 0.0
+pivot_lows = 0.0
+pivot_highs := na(pivot_high) ? pivot_highs[1] : high[pivot_len]
+pivot_lows := na(pivot_low) ? pivot_lows[1] : low[pivot_len]
+
+hipc = pivot_highs != pivot_highs[1] ? na : color.new(color.red,50)
+lopc = pivot_lows != pivot_lows[1] ? na : color.new(color.green,50)
+
+// Show Levels if Selected
+plot(show_sr_levels ? pivot_highs : na, color=hipc, linewidth=1, offset=-pivot_len ,title="Top Levels",style=plot.style_circles)
+plot(show_sr_levels ? pivot_lows : na, color=lopc, linewidth=1, offset=-pivot_len , title="Bottom Levels",style=plot.style_circles)
+//################ Linear Regression ##############################
+lin_reg(show,len,dev,_color)=>
+    
+    linreg = linreg(close, len, 0)
+    linreg_p = linreg(close, len, 1)
+
+    x = bar_index
+    slope = linreg - linreg_p
+    intercept = linreg - x*slope
+    deviationSum = 0.0
+    
+    for i=0 to len-1
+        deviationSum:= deviationSum + pow(close[i]-(slope*(x-i)+intercept), 2)  
+    
+    deviation = sqrt(deviationSum/(len))
+    
+    x1 = x-len
+    x2 = x
+    y1 = slope*(x-len)+intercept
+    y2 = linreg
+
+    line mid = show? line.new(x1, y1, x2, y2, xloc.bar_index, extend.right, _color):na
+    line.delete(mid[1])
+    
+    line top = show? line.new(x1, deviation*dev + y1, x2, deviation*dev + y2, xloc.bar_index, extend.right, _color):na
+    line.delete(top[1])
+    
+    line bot = show? line.new(x1,-deviation*dev + y1, x2, -deviation*dev + y2, xloc.bar_index, extend.right, _color):na
+    line.delete(bot[1])
+
+lin_reg(show_lin,lrg_len,lrg_dev,color.orange)
+
+//######################## Indicators For Indicator Index ##########
+//Bollinger Band
+bband_buy=close>sma(close,20)
+bband_sell=close<=sma(close,20)
+bband_p_count=bband_buy?1:0
+bband_n_count=bband_sell?1:0
+//Ema50
+ema50_buy=close>ema(close,50)
+ema50_sell=close<=ema(close,50)
+ema50_p_count=ema50_buy?1:0
+ema50_n_count=ema50_sell?1:0
+//Ema200
+ema200_buy=close>ema(close,200)
+ema200_sell=close<=ema(close,200)
+ema200_p_count=ema200_buy?1:0
+ema200_n_count=ema200_sell?1:0
+//Rsi
+rsi = rsi(close,14)
+rsi_buy=rsi>=50
+rsi_sell=rsi<50
+rsi_p_count=rsi_buy?1:0
+rsi_n_count=rsi_sell?1:0
+
+//Sotchrsi
+k = sma(stoch(rsi,rsi,rsi,14),3)
+d = sma(k,3)
+stochrsi_buy=k>d
+stochrsi_sell=k<=d
+stochrsi_p_count=stochrsi_buy?1:0
+stochrsi_n_count=stochrsi_sell?1:0
+//Parabolic Sar
+sar = sar(0.02,0.02,0.2)
+sar_buy=close>sar
+sar_sell=close<=sar
+sar_p_count=sar_buy?1:0
+sar_n_count=sar_sell?1:0
+//Macd
+[macd_line, signal_line, hist_line] = macd(close, 12, 26, 9)
+macd_buy=macd_line>signal_line
+macd_sell=macd_line<=signal_line
+macd_p_count=macd_buy?1:0
+macd_n_count=macd_sell?1:0
+//Hull
+hull = wma(2*wma(close,9/2)-wma(close,9),round(sqrt(9)))
+hull_buy=close>hull
+hull_sell=close<=hull
+hull_p_count=hull_buy?1:0
+hull_n_count=hull_sell?1:0
+//Dmi
+up = change(high)
+down = -change(low)
+plusDM = na(up) ? na : (up > down and up > 0 ? up : 0)
+minusDM = na(down) ? na : (down > up and down > 0 ? down : 0)
+trur = rma(tr,14)
+plus_di = fixnan(100 * rma(plusDM,14)/trur)
+minus_di = fixnan(100 * rma(minusDM,14)/trur)
+sum = plus_di + minus_di
+di_buy=plus_di>minus_di
+di_sell=plus_di<=minus_di
+di_p_count=di_buy?1:0
+di_n_count=di_sell?1:0
+//Adx
+adx = 100 * rma(abs(plus_di - minus_di)/(sum == 0 ? 1 : sum),14)
+adx_buy=adx>25
+adx_sell=adx<=25
+adx_p_count=adx_buy?1:0
+adx_n_count=adx_sell?1:0
+//Ichimoku
+tk_len = 9 //Tenkansen Length
+kj_len = 26 //Kijunsen Length
+cshs_len = 26 //Chikouspan Length
+sa_len = 26 //SenkouspanA Length
+sb_len = 52 //SenkouspanB Length
+tenkansen=Tenkansen_Func(tk_len)
+kijunsen=Kijunsen_Func(kj_len)
+chikouspan=close
+spana=Spana_Func(tenkansen,kijunsen)
+spanb=Spanb_Func(sb_len)
+tenkansen_buy=close>tenkansen
+tenkansen_sell=close<=tenkansen
+tenkansen_p_count=tenkansen_buy?1:0
+tenkansen_n_count=tenkansen_sell?1:0
+spana_buy=close>spana
+spana_sell=close<=spana
+spana_p_count=spana_buy?1:0
+spana_n_count=spana_sell?1:0
+//Chaikin Money Flow
+cmf_ad = close==high and close==low or high==low ? 0 : ((2*close-low-high)/(high-low))*volume
+cmf = sum(cmf_ad,20) / sum(volume,20)
+cmf_buy=cmf>0.2
+cmf_sell=cmf<=0.2
+cmf_p_count=cmf_buy?1:0
+cmf_n_count=cmf_buy?0:1
+//Money Flow Index
+mfi_upper = sum(volume * (change(hlc3) <= 0 ? 0 : hlc3),14)
+mfi_lower = sum(volume * (change(hlc3) >= 0 ? 0 : hlc3),14)
+mfi = rsi(mfi_upper, mfi_lower)
+mfi_buy=mfi>50
+mfi_sell=mfi<=50
+mfi_p_count=mfi_buy?1:0
+mfi_n_count=mfi_sell?1:0
+//Relative Volume
+vol_len = 14
+avg_vol = sma(volume, vol_len)
+rvol = volume/avg_vol
+rvol_buy=rvol>1.4
+rvol_sell=rvol<=1.4
+rvol_p_count=rvol_buy?1:0
+rvol_n_count=rvol_sell?1:0
+//Relative Momentum Index
+rmi_up = ema(max(close - close[5],0),20)
+rmi_dn = ema(max(close[5] - close,0),20)
+rmi = rmi_dn == 0 ? 0 : 100 - 100 / (1 + rmi_up / rmi_dn)
+
+total_p_count=bband_p_count + ema50_p_count + ema200_p_count + rsi_p_count + stochrsi_p_count + sar_p_count + macd_p_count + hull_p_count + di_p_count + adx_p_count + tenkansen_p_count + cmf_p_count + mfi_p_count + rvol_p_count
+total_n_count=bband_n_count + ema50_n_count + ema200_n_count + rsi_n_count + stochrsi_n_count + sar_n_count + macd_n_count + hull_n_count + di_n_count + adx_n_count + tenkansen_n_count + cmf_n_count + mfi_n_count + rvol_n_count
+
+//pil_buy= total_p_count>=pil_nbr and rmi>=rmi_nbr
+//######################## Extra chart Option #####################
+dummy8 = input(true, title = "=========== Extra Chart Option ==============")
+//######################## Bollinger Bands #########################
+boll_src = input(defval=close, title="Bollinger Source")
+boll_len = input(defval=20, minval=1, title="Bollinger Length")
+boll_mult = input(defval=2.0, minval=0.001, maxval=50,title="Bollinger Multipler")
+
+boll_basis(src,len)=>
+    sma(src,len)
+
+boll_upper(src,len,mult)=>
+    sma(src,len) + (mult * stdev(src,len))
+boll_lower(src,len,mult)=>
+    sma(src,len) - (mult * stdev(src,len))
+
+show_bollinger_signal = input(title="Show Bollinger Bands?", type=input.bool, defval=false)
+
+plot(show_bollinger_signal? boll_basis(boll_src,boll_len): na, color=color.red, transp=75, title="moving average")
+p1 = plot(show_bollinger_signal? boll_upper(boll_src,boll_len,boll_mult): na, color=color.blue, transp=35, title="high band")
+p2 = plot(show_bollinger_signal? boll_lower(boll_src,boll_len,boll_mult): na, color=color.blue, transp=35, title="Low band")
+fill(p1, p2, color=color.blue, transp=95, title="background")
+//######################## MA #####################################
+ma = input(defval = "EMA", title = "MA Type", options=["T3","EMA","SMA","DEMA","TEMA","WMA","VWMA","SMMA","HMA","KIJUNSEN","VIDYA","VMA","ZLEMA"])
+
+ma_t3_factor = input(defval=0.47, step=0.1, title="T3 Factor", minval=0.01)
+
+ma1 = input(9, title="MA 1")
+ma2 = input(21, title="MA 2")
+ma3 = input(50, title="MA 3")
+ma4 = input(100, title="MA 4")
+ma5 = input(200, title="MA 5")
+ema_src = input(close, title="MA Source")
+
+ema_ma1 = Ma_Func(ema_src, ma1, ma, ma_t3_factor)
+ema_ma2 = Ma_Func(ema_src, ma2, ma, ma_t3_factor)
+ema_ma3 = Ma_Func(ema_src, ma3, ma, ma_t3_factor)
+ema_ma4 = Ma_Func(ema_src, ma4, ma, ma_t3_factor)
+ema_ma5 = Ma_Func(ema_src, ma5, ma, ma_t3_factor)
+
+show_ema_signal = input(title="Show MA Signals?", type=input.bool, defval=false)
+
+plot(show_ema_signal? ema_ma1: na, title="Plot MA1",linewidth=2,color=color.aqua)
+plot(show_ema_signal? ema_ma2: na, title="Plot MA2",linewidth=2,color=color.fuchsia)
+plot(show_ema_signal? ema_ma3: na, title="Plot MA3",linewidth=2,color=color.orange)
+plot(show_ema_signal? ema_ma4: na, title="Plot MA4",linewidth=2,color=color.yellow)
+plot(show_ema_signal? ema_ma5: na, title="Plot MA5",linewidth=2,color=color.black)
+//######################## Sar #####################################
+sar_start = input(0.02, title="Parabolic Sar Start")
+sar_increment = input(0.02, title="Parabolic Sar Increment")
+sar_maximum = input(0.2, title="Parabolic Sar Maximum")
+sar_out = sar(sar_start, sar_increment, sar_maximum)
+sar_dir = sar_out < close ? 1 : -1
+sar_color = sar_dir==1?color.green:color.red
+
+show_sar_signal = input(title="Show Sar Signals?", type=input.bool, defval=false)
+
+plot(show_sar_signal? sar_out: na,style=plot.style_cross,color=sar_color,linewidth=1)
+
+//buySignal = (sar_dir == 1 and sar_dir[1] == -1)
+//sellSignal = (sar_dir== -1 and sar_dir[1] == 1)
+//######################## Ichimoku ################################
+tk_len2=input(9, "Tenkansen Length", minval=1)
+kj_len2=input(26, "Kijunsen Length", minval=1)
+cshs_len2=input(26, "Chikouspan Length/Horizontal Shift", minval=1)
+sb_len2=input(52, "SenkouspanB Length", minval=1)
+sa_len2=input(26,"SenkouspanA Length", minval=1)
+
+tk=Tenkansen_Func(tk_len2)
+kj=Kijunsen_Func(kj_len2)
+cs=close
+sa=Spana_Func(tk,kj)
+sb=Spanb_Func(sb_len2)
+
+show_ich_signal = input(title="Show Ichimoku Signals?", type=input.bool, defval=false)
+
+plot(show_ich_signal? tk: na, linewidth=2, color=color.blue, title="TenkanSen")
+plot(show_ich_signal? kj: na, linewidth=2, color=color.red, title="KijunSen")
+
+plot(show_ich_signal? cs: na, offset=-cshs_len2, linewidth=2, color=#DDA0DD, title="ChikouSpan")
+
+SenkouA=plot(show_ich_signal? sa : na, offset=cshs_len2,  linewidth=1, color=color.green, title="SenkouSpanA")
+SenkouB=plot(show_ich_signal? sb : na, offset=cshs_len2, linewidth=1, color=color.purple, title="SenkouSpanB")
+
+fill(SenkouA, SenkouB, color = sa > sb ? color.green : color.red)
+//######################## Symbol Lists ############################
+dummy9 = input(true, title = "========== My Symbol Lists =================")
+
+List_01=input('XAUUSD',    title='Symbol 01',type=input.symbol)
+List_02=input('XAUTRYG',   title='Symbol 02',type=input.symbol)
+List_03=input('USDTRY',    title='Symbol 03',type=input.symbol)
+List_04=input('EURTRY',    title='Symbol 04',type=input.symbol)
+List_05=input('XU100',     title='Symbol 05',type=input.symbol)
+List_06=input('BTCUSD',    title='Symbol 06',type=input.symbol)
+List_07=input('AKBNK',    title='Symbol 07',type=input.symbol)
+List_08=input('ALARK',    title='Symbol 08',type=input.symbol)
+List_09=input('ASELS',    title='Symbol 09',type=input.symbol)
+List_10=input('ASTOR',    title='Symbol 10',type=input.symbol)
+List_11=input("BIMAS",     title='Symbol 11',type=input.symbol)
+List_12=input('BRSAN',      title='Symbol 12',type=input.symbol)
+List_13=input('DOAS',      title='Symbol 13',type=input.symbol)
+List_14=input('EKGYO',      title='Symbol 14',type=input.symbol)
+List_15=input('ENKAI',      title='Symbol 15',type=input.symbol)
+List_16=input('EREGL',     title='Symbol 16',type=input.symbol)
+List_17=input('FROTO',    title='Symbol 17',type=input.symbol)
+List_18=input('GARAN',    title='Symbol 18',type=input.symbol)
+List_19=input('GUBRF',    title='Symbol 19',type=input.symbol)
+List_20=input('HEKTS',    title='Symbol 20',type=input.symbol)
+List_21=input('ISCTR',       title='Symbol 21',type=input.symbol)
+List_22=input('KCHOL',     title='Symbol 22',type=input.symbol)
+List_23=input('KONTR',      title='Symbol 23',type=input.symbol)
+List_24=input("KOZAL",          title='Symbol 24',type=input.symbol)
+List_25=input("KRDMD",          title='Symbol 25',type=input.symbol)
+List_26=input("OYAKC",          title='Symbol 26',type=input.symbol)
+List_27=input("PETKM",          title='Symbol 27',type=input.symbol)
+List_28=input("PGSUS",          title='Symbol 28',type=input.symbol)
+List_29=input("SAHOL",          title='Symbol 29',type=input.symbol)
+List_30=input("SASA",          title='Symbol 30',type=input.symbol)
+List_31=input("SISE",          title='Symbol 31',type=input.symbol)
+List_32=input("TCELL",          title='Symbol 32',type=input.symbol)
+List_33=input("THYAO",          title='Symbol 33',type=input.symbol)
+List_34=input("TOASO",          title='Symbol 34',type=input.symbol)
+List_35=input("TUPRS",          title='Symbol 35',type=input.symbol)
+List_36=input("YKBNK",          title='Symbol 36',type=input.symbol)
+List_37=input("",          title='Symbol 37',type=input.symbol)
+List_38=input("",          title='Symbol 38',type=input.symbol)
+List_39=input("",          title='Symbol 39',type=input.symbol)
+List_40=input("",          title='Symbol 40',type=input.symbol)
+
+//######################## Label ###################################
+f_draw_label(_cond,_x,_y,_textline,_boxcolor,_txtcolor,_style,_txtalign)=>
+    var label Label = na
+    Label := _cond?label.new(_x,_y,_textline, color=_boxcolor, textcolor=_txtcolor,style=_style, yloc=yloc.price, xloc=xloc.bar_time, size=size.normal,textalign=_txtalign):na
+    label.delete(_cond?Label[1]:Label[0])
+
+format_text(str) =>
+    str + "\n"
+
+x= timenow + round(change(time)*10*3)
+y = high + 0.1*high
+//######################## Label For Strategy Parameters ###########
+par1=strategy_type=='TREND'?ma_len:strategy_type=='MA'?mo_len1:na
+par2=strategy_type=='TREND'?ma_percent:strategy_type=='MA'?mo_len2:na
+
+type1=strategy_type=='TREND'?tr_type:strategy_type=='MA'?mo_type1:na
+type2=(tr_type=='MOST' or tr_type=='OTT')?'VMA':(tr_type=='SUPERTREND' or tr_type=='PMAX' )?'ATR':strategy_type=='MA'?mo_type2:na
+
+closed_trades = strategy.closedtrades
+win_trades    = strategy.wintrades
+loss_trades   = strategy.losstrades
+percent_profitable = (strategy.wintrades/strategy.closedtrades)*100
+
+time_period=timeframe.period=='1'?'1 Minutes':timeframe.period=='3'?'3 Minutes':timeframe.period=='5'?'5 Minutes':timeframe.period=='15'?'15 Minutes':timeframe.period=='30'?'30 Minutes':timeframe.period=='45'?'45 Minutes':timeframe.period=='60'?'1 Hour':timeframe.period=='120'?'2 Hours':timeframe.period=='180'?'3 Hours':timeframe.period=='240'?'4 Hours':timeframe.period=='D'?'1 Day':timeframe.period=='W'?'1 Week':timeframe.period=='M'?'1 Month':timeframe.period
+
+pr_txt00 = show_strategy_parameters==1?format_text('---------------------------------\n STRATEGY PARAMETERS \n---------------------------------'):na
+pr_txt01 = show_strategy_parameters==1?format_text('TIME PERIOD...........> ' + time_period):na
+pr_txt02 = show_strategy_parameters==1?format_text('TREND TYPE............> ' + tr_type):na
+pr_txt03 = show_strategy_parameters==1?format_text('FIRST TYPE.............> ' + type1):na
+pr_txt04 = show_strategy_parameters==1?format_text('FIRST PARAMETER.....> ' + tostring(par1)):na
+pr_txt05 = show_strategy_parameters==1?format_text('SECOND TYPE..........> ' + type2):na
+pr_txt06 = show_strategy_parameters==1?format_text('SECOND PARAMETER..> ' + tostring(par2)):na
+
+pr_txt07 = show_performance_output ==1?format_text('---------------------------------\n PERFORMANCE OUTPUT  \n---------------------------------'):na
+pr_txt08 = show_performance_output ==1?format_text('DATE RANGE........> ' + tostring(FromYear) + ' - ' + tostring(ToYear)):na
+pr_txt09 = show_performance_output ==1?format_text('PROFITABLE.........> ' + '% ' + tostring(percent_profitable,'#.##')):na
+pr_txt10 = show_performance_output ==1?format_text('CLOSED TRADES....> ' + tostring(closed_trades)):na
+pr_txt11 = show_performance_output ==1?format_text('WIN TRADES.........> ' + tostring(win_trades)):na
+pr_txt12 = show_performance_output ==1?format_text('LOSS TRADES........> ' + tostring(loss_trades)):na
+
+pr_final_text = pr_txt00 + pr_txt01 + pr_txt02 + pr_txt03 + pr_txt04 + pr_txt05 + pr_txt06 + pr_txt07 + pr_txt08 + pr_txt09 + pr_txt10 + pr_txt11 + pr_txt12
+//######################## Label For Stock Screener ################
+
+s01  = st_sc==1 and security(List_01,timeframe.period,condition)
+s02  = st_sc==1 and security(List_02,timeframe.period,condition)
+s03  = st_sc==1 and security(List_03,timeframe.period,condition)
+s04  = st_sc==1 and security(List_04,timeframe.period,condition)
+s05  = st_sc==1 and security(List_05,timeframe.period,condition)
+s06  = st_sc==1 and security(List_06,timeframe.period,condition)
+s07  = st_sc==1 and security(List_07,timeframe.period,condition)
+s08  = st_sc==1 and security(List_08,timeframe.period,condition)
+s09  = st_sc==1 and security(List_09,timeframe.period,condition)
+s10  = st_sc==1 and security(List_10,timeframe.period,condition)
+s11  = st_sc==1 and security(List_11,timeframe.period,condition)
+s12  = st_sc==1 and security(List_12,timeframe.period,condition)
+s13  = st_sc==1 and security(List_13,timeframe.period,condition)
+s14  = st_sc==1 and security(List_14,timeframe.period,condition)
+s15  = st_sc==1 and security(List_15,timeframe.period,condition)
+s16  = st_sc==1 and security(List_16,timeframe.period,condition)
+s17  = st_sc==1 and security(List_17,timeframe.period,condition)
+s18  = st_sc==1 and security(List_18,timeframe.period,condition)
+s19  = st_sc==1 and security(List_19,timeframe.period,condition)
+s20  = st_sc==1 and security(List_20,timeframe.period,condition)
+s21  = st_sc==1 and security(List_21,timeframe.period,condition)
+s22  = st_sc==1 and security(List_22,timeframe.period,condition)
+s23  = st_sc==1 and security(List_23,timeframe.period,condition)
+s24  = st_sc==1 and security(List_24,timeframe.period,condition)
+s25  = st_sc==1 and security(List_25,timeframe.period,condition)
+s26  = st_sc==1 and security(List_26,timeframe.period,condition)
+s27  = st_sc==1 and security(List_27,timeframe.period,condition)
+s28  = st_sc==1 and security(List_28,timeframe.period,condition)
+s29  = st_sc==1 and security(List_29,timeframe.period,condition)
+s30  = st_sc==1 and security(List_30,timeframe.period,condition)
+s31  = st_sc==1 and security(List_31,timeframe.period,condition)
+s32  = st_sc==1 and security(List_32,timeframe.period,condition)
+s33  = st_sc==1 and security(List_33,timeframe.period,condition)
+s34  = st_sc==1 and security(List_34,timeframe.period,condition)
+s35  = st_sc==1 and security(List_35,timeframe.period,condition)
+s36  = st_sc==1 and security(List_36,timeframe.period,condition)
+s37  = st_sc==1 and security(List_37,timeframe.period,condition)
+s38  = st_sc==1 and security(List_38,timeframe.period,condition)
+s39  = st_sc==1 and security(List_39,timeframe.period,condition)
+s40  = st_sc==1 and security(List_40,timeframe.period,condition)
+
+st_txt_head = st_sc==1 ? format_text('---------------------------------\nSTOCK SCREENER RESULT\n---------------------------------'):na
+st_txt_info = st_sc==1 ? format_text('CONDITION : ' + look_for):na
+st_txt_lbb = st_sc==1 ? format_text('LAST BAR BACK : ' + tostring(last_bar_back)):na
+st_txt_symbols = st_sc==1 ? format_text('SYMBOLS : \n---------------------------------' ):na
+st_txt01 = st_sc==1 and s01 ? format_text(List_01):na
+st_txt02 = st_sc==1 and s02 ? format_text(List_02):na
+st_txt03 = st_sc==1 and s03 ? format_text(List_03):na
+st_txt04 = st_sc==1 and s04 ? format_text(List_04):na
+st_txt05 = st_sc==1 and s05 ? format_text(List_05):na
+st_txt06 = st_sc==1 and s06 ? format_text(List_06):na
+st_txt07 = st_sc==1 and s07 ? format_text(List_07):na
+st_txt08 = st_sc==1 and s08 ? format_text(List_08):na
+st_txt09 = st_sc==1 and s09 ? format_text(List_09):na
+st_txt10 = st_sc==1 and s10 ? format_text(List_10):na
+st_txt11 = st_sc==1 and s11 ? format_text(List_11):na
+st_txt12 = st_sc==1 and s12 ? format_text(List_12):na
+st_txt13 = st_sc==1 and s13 ? format_text(List_13):na
+st_txt14 = st_sc==1 and s14 ? format_text(List_14):na
+st_txt15 = st_sc==1 and s15 ? format_text(List_15):na
+st_txt16 = st_sc==1 and s16 ? format_text(List_16):na
+st_txt17 = st_sc==1 and s17 ? format_text(List_17):na
+st_txt18 = st_sc==1 and s18 ? format_text(List_18):na
+st_txt19 = st_sc==1 and s19 ? format_text(List_19):na
+st_txt20 = st_sc==1 and s20 ? format_text(List_20):na
+st_txt21 = st_sc==1 and s21 ? format_text(List_21):na
+st_txt22 = st_sc==1 and s22 ? format_text(List_22):na
+st_txt23 = st_sc==1 and s23 ? format_text(List_23):na
+st_txt24 = st_sc==1 and s24 ? format_text(List_24):na
+st_txt25 = st_sc==1 and s25 ? format_text(List_25):na
+st_txt26 = st_sc==1 and s26 ? format_text(List_26):na
+st_txt27 = st_sc==1 and s27 ? format_text(List_27):na
+st_txt28 = st_sc==1 and s28 ? format_text(List_28):na
+st_txt29 = st_sc==1 and s29 ? format_text(List_29):na
+st_txt30 = st_sc==1 and s30 ? format_text(List_30):na
+st_txt31 = st_sc==1 and s31 ? format_text(List_31):na
+st_txt32 = st_sc==1 and s32 ? format_text(List_32):na
+st_txt33 = st_sc==1 and s33 ? format_text(List_33):na
+st_txt34 = st_sc==1 and s34 ? format_text(List_34):na
+st_txt35 = st_sc==1 and s35 ? format_text(List_35):na
+st_txt36 = st_sc==1 and s36 ? format_text(List_36):na
+st_txt37 = st_sc==1 and s37 ? format_text(List_37):na
+st_txt38 = st_sc==1 and s38 ? format_text(List_38):na
+st_txt39 = st_sc==1 and s39 ? format_text(List_39):na
+st_txt40 = st_sc==1 and s40 ? format_text(List_40):na
+ 
+st_final_text1 =st_txt01 + st_txt02 + st_txt03 + st_txt04 + st_txt05 + st_txt06 + st_txt07 + st_txt08 + st_txt09 + st_txt10
+st_final_text2 =st_txt11 + st_txt12 + st_txt13 + st_txt14 + st_txt15 + st_txt16 + st_txt17 + st_txt18 + st_txt19 + st_txt20
+st_final_text3 =st_txt21 + st_txt22 + st_txt23 + st_txt24 + st_txt25 + st_txt26 + st_txt27 + st_txt28 + st_txt29 + st_txt30
+st_final_text4 =st_txt31 + st_txt32 + st_txt33 + st_txt34 + st_txt35 + st_txt36 + st_txt37 + st_txt38 + st_txt39 + st_txt40
+
+st_final_text = st_txt_head + st_txt_info + st_txt_lbb + st_txt_symbols + st_final_text1 + st_final_text2 + st_final_text3 + st_final_text4
+
+st_all_text= pr_final_text + st_final_text
+
+st_cond = (st_sc==1 or show_performance_output==1 or show_strategy_parameters)?1:0
+
+lab_color=color.blue
+
+f_draw_label(st_cond,x,y,st_all_text,lab_color,color.white,label.style_labeldown,text.align_left)
+//######################## Label For Indicator Index ###############
+ii_cond=(show_pil==1 or show_nil==1)?1:0
+
+x1 = x
+y1 = low - 0.1*low
+
+ii_p_txt_head = show_pil==1?format_text('---------------------------------\nPOSITIVE INDICATOR LIST\n----------------------------------'):na
+ii_p_txt01 = show_pil==1 and bband_buy?       format_text('BBAND(20)'):na
+ii_p_txt02 = show_pil==1 and ema50_buy?       format_text('EMA(50)'):na
+ii_p_txt03 = show_pil==1 and ema200_buy?      format_text('EMA(200)'):na
+ii_p_txt04 = show_pil==1 and rsi_buy?         format_text('RSI(50)'):na
+ii_p_txt05 = show_pil==1 and stochrsi_buy?    format_text('STOCHRSI'):na
+ii_p_txt06 = show_pil==1 and sar_buy?         format_text('PSAR'):na
+ii_p_txt07 = show_pil==1 and macd_buy?        format_text('MACD'):na
+ii_p_txt08 = show_pil==1 and hull_buy?        format_text('HULL(9)'):na
+ii_p_txt09 = show_pil==1 and adx_buy?         format_text('ADX(25)'):na
+ii_p_txt10 = show_pil==1 and di_buy?          format_text('DMI'):na
+ii_p_txt11 = show_pil==1 and tenkansen_buy?   format_text('TENKANSEN(9)'):na
+ii_p_txt12 = show_pil==1 and cmf_buy?         format_text('CMF(0.2)'):na
+ii_p_txt13 = show_pil==1 and mfi_buy?         format_text('MFI(50)'):na
+ii_p_txt14 = show_pil==1 and rvol_buy?        format_text('RVOL(1.4)'):na
+
+ii_p_txt_count = show_pil==1? format_text('\n' + '('+'14/' + tostring(total_p_count) + ')'):na
+
+ii_p_final_text = ii_p_txt_head + ii_p_txt01 + ii_p_txt02 + ii_p_txt03 + ii_p_txt04 + ii_p_txt05 + ii_p_txt06 + ii_p_txt07 + ii_p_txt08 + ii_p_txt09 + ii_p_txt10 + + ii_p_txt11 + ii_p_txt12 + ii_p_txt13 + ii_p_txt14 + ii_p_txt_count
+
+ii_n_txt_head = show_nil==1? format_text('---------------------------------\nNEGATIVE INDICATOR LIST\n----------------------------------'):na
+ii_n_txt01 = show_nil==1 and bband_sell?       format_text('BBAND(20)'):na
+ii_n_txt02 = show_nil==1 and ema50_sell?       format_text('EMA(50)'):na
+ii_n_txt03 = show_nil==1 and ema200_sell?      format_text('EMA(200)'):na
+ii_n_txt04 = show_nil==1 and rsi_sell?         format_text('RSI(50)'):na
+ii_n_txt05 = show_nil==1 and stochrsi_sell?    format_text('STOCHRSI'):na
+ii_n_txt06 = show_nil==1 and sar_sell?         format_text('PSAR'):na
+ii_n_txt07 = show_nil==1 and macd_sell?        format_text('MACD'):na
+ii_n_txt08 = show_nil==1 and hull_sell?        format_text('HULL(9)'):na
+ii_n_txt09 = show_nil==1 and adx_sell?         format_text('ADX(25)'):na
+ii_n_txt10 = show_nil==1 and di_sell?          format_text('DMI'):na
+ii_n_txt11 = show_nil==1 and tenkansen_sell?   format_text('TENKANSEN(9)'):na
+ii_n_txt12 = show_nil==1 and cmf_sell?         format_text('CMF(0.2)'):na
+ii_n_txt13 = show_nil==1 and mfi_sell?         format_text('MFI(50)'):na
+ii_n_txt14 = show_nil==1 and rvol_sell?        format_text('RVOL(1.4)'):na
+
+ii_n_txt_count = show_nil==1?format_text('\n' + '('+'14/' + tostring(total_n_count) + ')'):na
+
+ii_n_final_text = ii_n_txt_head + ii_n_txt01 + ii_n_txt02 + ii_n_txt03 + ii_n_txt04 + ii_n_txt05 + ii_n_txt06 + ii_n_txt07 + ii_n_txt08 + ii_n_txt09 + ii_n_txt10 + ii_n_txt11 + ii_n_txt12 + ii_n_txt13 + ii_n_txt14 + ii_n_txt_count
+
+ii_o_txt_head = (show_pil==1 or show_nil==1)? format_text('---------------------------------\nOTHER INDICATOR LIST\n----------------------------------'):na
+ii_o_txt01 = (show_pil==1 or show_nil==1)? format_text('RMI = ' + tostring(rmi,'##.##')):na
+
+ii_o_final_text= ii_o_txt_head + ii_o_txt01
+
+ii_final_text= ii_p_final_text + ii_n_final_text + ii_o_final_text
+
+_color = total_p_count>=7?color.green:total_p_count<=4?color.red:color.orange
+
+f_draw_label(ii_cond,x1,y1,ii_final_text,_color,color.white,label.style_labelup,text.align_center)
+//######################## Alert ###################################
+alertcondition(buy, title="BUY SIGNAL!", message="BUY SIGNAL!")
+alertcondition(sell, title="SELL SIGNAL!", message="SELL SIGNAL!")
